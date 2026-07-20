@@ -11,31 +11,10 @@ async def test_health_check(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_register_user(client: AsyncClient):
-    response = await client.post("/api/v1/auth/register", json={
-        "email": "newuser@test.com",
-        "username": "newuser123",
-        "full_name": "New User",
-        "password": "SecurePass123!",
-        "role": "dispatcher",
-    })
-    assert response.status_code == 201
-    data = response.json()
-    assert data["email"] == "newuser@test.com"
-    assert "id" in data
 
 
 @pytest.mark.asyncio
 async def test_login(client: AsyncClient):
-    # First register
-    await client.post("/api/v1/auth/register", json={
-        "email": "login@test.com",
-        "username": "loginuser",
-        "full_name": "Login User",
-        "password": "SecurePass123!",
-        "role": "dispatcher",
-    })
-
     response = await client.post("/api/v1/auth/login", json={
         "email": "login@test.com",
         "password": "SecurePass123!",
@@ -66,26 +45,7 @@ async def test_get_me(client: AsyncClient, auth_headers):
 
 
 @pytest.mark.asyncio
-async def test_duplicate_email_registration(client: AsyncClient):
-    # Second registration with same email should fail
-    await client.post("/api/v1/auth/register", json={
-        "email": "dup@test.com",
-        "username": "dup1",
-        "full_name": "Dup User",
-        "password": "SecurePass123!",
-        "role": "dispatcher",
-    })
-    response = await client.post("/api/v1/auth/register", json={
-        "email": "dup@test.com",
-        "username": "dup2",
-        "full_name": "Dup User 2",
-        "password": "SecurePass123!",
-        "role": "dispatcher",
-    })
-    assert response.status_code == 409
-
-
-@pytest.mark.asyncio
+ 
 async def test_unauthorized_access(client: AsyncClient):
     response = await client.get("/api/v1/customers/")
     assert response.status_code == 403

@@ -8,7 +8,26 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+# Use cross-DB compatible types (works on SQLite and PostgreSQL)
+from sqlalchemy import types as sa_types
+from sqlalchemy.dialects import postgresql
+
+class UUID(sa_types.TypeDecorator):
+    """Platform-independent UUID type. Uses PostgreSQL UUID on Postgres, TEXT on others."""
+    impl = sa_types.String(36)
+    cache_ok = True
+    def load_dialect_impl(self, dialect):
+        if dialect.name == 'postgresql':
+            return dialect.type_descriptor(postgresql.UUID())
+        return dialect.type_descriptor(sa_types.String(36))
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        return str(value)
+    def process_result_value(self, value, dialect):
+        return value
+
+JSONB = JSON  # SQLite uses JSON, PostgreSQL uses JSON (JSONB handled by dialect on Postgres)
 import enum
 from app.db.database import Base
 
@@ -38,6 +57,11 @@ class OrderStatus(str, enum.Enum):
     CANCELLED = "cancelled"
     RESCHEDULED = "rescheduled"
     RETURNED = "returned"
+    # Dispatch workflow statuses
+    GOING_FOR_PICKUP  = "going_for_pickup"
+    INVOICED          = "invoiced"
+    ONSITE_FOR_PICKUP = "onsite_for_pickup"
+    PAID              = "paid"
 
 class DispatchStatus(str, enum.Enum):
     QUEUED = "queued"
@@ -188,7 +212,7 @@ class Company(Base, TimestampMixin):
     pan_number: Mapped[Optional[str]] = mapped_column(String(20))
     website: Mapped[Optional[str]] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    settings: Mapped[Optional[dict]] = mapped_column(JSONB, default={})
+    settings: Mapped[Optional[dict]] = mapped_column(JSON, default={})
     theme_color: Mapped[Optional[str]] = mapped_column(String(20))
 
     users: Mapped[List["User"]] = relationship("User", back_populates="company")
@@ -589,8 +613,8 @@ class AuditLog(Base):
     action: Mapped[AuditAction] = mapped_column(SAEnum(AuditAction), nullable=False, index=True)
     resource_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     resource_id: Mapped[Optional[str]] = mapped_column(String(255))
-    old_values: Mapped[Optional[dict]] = mapped_column(JSONB)
-    new_values: Mapped[Optional[dict]] = mapped_column(JSONB)
+    old_values: Mapped[Optional[dict]] = mapped_column(JSON)
+    new_values: Mapped[Optional[dict]] = mapped_column(JSON)
     ip_address: Mapped[Optional[str]] = mapped_column(String(45))
     user_agent: Mapped[Optional[str]] = mapped_column(String(500))
     description: Mapped[Optional[str]] = mapped_column(Text)
@@ -615,7 +639,7 @@ class Setting(Base, TimestampMixin):
     company_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id"))
     key: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     value: Mapped[Optional[str]] = mapped_column(Text)
-    value_json: Mapped[Optional[dict]] = mapped_column(JSONB)
+    value_json: Mapped[Optional[dict]] = mapped_column(JSON)
     description: Mapped[Optional[str]] = mapped_column(Text)
     is_system: Mapped[bool] = mapped_column(Boolean, default=False)
 

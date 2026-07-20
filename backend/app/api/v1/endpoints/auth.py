@@ -13,12 +13,6 @@ from app.repositories.repositories import UserRepository
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
-@router.post("/register", response_model=UserResponse, status_code=201)
-async def register(user_in: UserCreate, request: Request, db: AsyncSession = Depends(get_db)):
-    """Register a new user account."""
-    service = AuthService(db)
-    user = await service.register(user_in, request)
-    return user
 
 
 @router.post("/login", response_model=TokenResponse)

@@ -45,17 +45,7 @@ async def client():
 @pytest.fixture
 async def auth_headers(client: AsyncClient):
     """Create a test user and return auth headers."""
-    # Register
-    response = await client.post("/api/v1/auth/register", json={
-        "email": "test@westernhaul.com",
-        "username": "testadmin",
-        "full_name": "Test Admin",
-        "password": "TestPass123!",
-        "role": "admin",
-    })
-    
-    if response.status_code not in [201, 409]:
-        raise Exception(f"Registration failed: {response.text}")
+
 
     # Login
     login = await client.post("/api/v1/auth/login", json={

@@ -49,6 +49,7 @@ class FreightOrderCreate(BaseModel):
     eway_bill_number: Optional[str] = None
     special_instructions: Optional[str] = None
     internal_notes: Optional[str] = None
+    status: Optional[OrderStatus] = OrderStatus.PENDING
     locations: List[OrderLocationCreate] = []
 
 

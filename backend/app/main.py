@@ -15,11 +15,15 @@ from app.core.config import settings
 from app.api.v1.router import api_router
 
 
+from app.db.database import create_all_tables
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application startup and shutdown events."""
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
-    # Could run DB init here if needed
+    # Auto-create tables (works for SQLite dev mode)
+    await create_all_tables()
+    logger.info("Database tables ready.")
     yield
     logger.info("Shutting down...")
 

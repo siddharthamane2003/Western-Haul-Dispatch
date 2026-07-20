@@ -22,38 +22,6 @@ class AuthService:
         self.token_repo = RefreshTokenRepository(db)
         self.audit_repo = AuditLogRepository(db)
 
-    async def register(self, user_in: UserCreate, request: Request) -> User:
-        # Check if email already exists
-        existing = await self.user_repo.get_by_email(user_in.email)
-        if existing:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Email already registered"
-            )
-
-        existing_username = await self.user_repo.get_by_username(user_in.username)
-        if existing_username:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Username already taken"
-            )
-
-        hashed_password = get_password_hash(user_in.password)
-        user_data = user_in.model_dump(exclude={"password"})
-        user_data["hashed_password"] = hashed_password
-
-        user = await self.user_repo.create(user_data)
-
-        await self.audit_repo.create_log(
-            user_id=user.id,
-            action=AuditAction.CREATE,
-            resource_type="user",
-            resource_id=str(user.id),
-            description=f"User registered: {user.email}",
-            ip_address=request.client.host if request.client else None,
-        )
-        return user
-
     async def login(self, login_in: LoginRequest, request: Request) -> TokenResponse:
         user = await self.user_repo.get_by_email(login_in.email)
 
