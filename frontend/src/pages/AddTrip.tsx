@@ -445,19 +445,38 @@ export default function AddTrip() {
     })
 
     try {
-      const customerRes = await apiGet<any>('/customers/?size=1')
+      const customerRes = await apiGet<any>(`/customers/?q=${encodeURIComponent(freightBrokerName)}`)
       const customerId = customerRes?.items?.[0]?.id
 
       let savedTripId = `local-${Date.now()}`
-      if (customerId) {
+      let finalCustomerId = customerId
+
+      if (!finalCustomerId) {
+        try {
+          const newCustomer = await apiPost<any>('/customers/', {
+            company_name: freightBrokerName,
+            contact_name: freightBrokerEmployee || 'Unknown',
+            email: `broker-${Date.now()}@example.com`,
+            phone: '000-000-0000',
+            customer_type: 'BROKER',
+            status: 'ACTIVE'
+          })
+          finalCustomerId = newCustomer.id
+        } catch (e) {
+          console.error('Failed to create customer', e)
+        }
+      }
+
+      if (finalCustomerId) {
         try {
           const saved = await apiPost<any>('/orders/', {
-            customer_id: customerId, priority: 'normal',
+            customer_id: finalCustomerId, priority: 'normal',
             material_type: 'General Freight', weight_tons: 1,
             pickup_date: new Date().toISOString().split('T')[0],
             freight_amount: parseFloat(amount) || 0,
             payment_mode: paymentType,
             internal_notes: metaNotes,
+            load_number: loadNumber,
             status: STATUS_MAP[tripStatus] || 'pending',
             locations: [],
           })

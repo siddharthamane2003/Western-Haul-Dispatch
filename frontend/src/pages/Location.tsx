@@ -201,7 +201,7 @@ export default function LocationPage() {
         notes: s.notes || undefined,
       }));
       try {
-        await apiPost(`/orders/${orderId}/locations`, payload);
+        await apiPost(`/orders/${orderId}/locations?replace=true`, payload);
         toast.success('Stops synced to server');
       } catch (e) {
         console.error(e);
@@ -462,6 +462,19 @@ export default function LocationPage() {
           onClose={() => setShowLocationPicker(false)}
         />
       )}
+
+      {/* Bottom Done Button */}
+      <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end', paddingBottom: '20px' }}>
+        <button
+          onClick={() => navigate('/app/trip/search')}
+          style={{
+            background: '#10b981', color: '#fff', border: 'none', padding: '12px 24px',
+            borderRadius: '10px', fontWeight: '800', cursor: 'pointer', fontSize: '14px'
+          }}
+        >
+          Done / View Trips
+        </button>
+      </div>
     </div>
   )
 }

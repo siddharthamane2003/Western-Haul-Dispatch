@@ -71,6 +71,7 @@ class FreightOrderCreate(BaseModel):
     internal_notes: Optional[str] = None
     status: Optional[OrderStatus] = OrderStatus.PENDING
     locations: List[OrderLocationCreate] = []
+    load_number: Optional[str] = None
 
 
 class FreightOrderUpdate(BaseModel):
@@ -95,12 +96,14 @@ class FreightOrderUpdate(BaseModel):
     special_instructions: Optional[str] = None
     internal_notes: Optional[str] = None
     status: Optional[OrderStatus] = None
+    load_number: Optional[str] = None
     cancellation_reason: Optional[str] = None
 
 
 class FreightOrderResponse(BaseModel):
     id: UUID
     order_number: str
+    load_number: Optional[str] = None
     customer_id: UUID
     # Nested customer with company_name so frontend can display broker name
     customer: Optional[CustomerSummary] = None

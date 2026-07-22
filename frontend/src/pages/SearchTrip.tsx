@@ -23,7 +23,8 @@ interface StopItem {
 
 interface TripRow {
   id: string
-  loadNumber: string          // order_number (user-entered load number)
+  tripId: string              // order_number (e.g. WH-000001)
+  loadNumber: string          // load_number (entered by user)
   freightBrokerName: string   // from internal_notes or customer
   amount: string
   paymentType: string
@@ -91,7 +92,8 @@ export default function SearchTrip() {
 
         return {
           id: item.id,
-          loadNumber: item.order_number || '',
+          tripId: item.order_number || '',
+          loadNumber: item.load_number || '',
           freightBrokerName: freightBroker,
           amount: item.freight_amount?.toString() || item.total_amount?.toString() || '0',
           paymentType: item.payment_mode || 'CAD',
@@ -107,6 +109,7 @@ export default function SearchTrip() {
   }, [])
 
   const filtered = trips.filter(t =>
+    t.tripId.toLowerCase().includes(search.toLowerCase()) ||
     t.loadNumber.toLowerCase().includes(search.toLowerCase()) ||
     t.freightBrokerName.toLowerCase().includes(search.toLowerCase()) ||
     t.status.toLowerCase().includes(search.toLowerCase()) ||
@@ -134,6 +137,7 @@ export default function SearchTrip() {
     // Build trip object compatible with AssignDispatchModal
     const assignObj = {
       id: trip.id,
+      tripId: trip.tripId,
       loadNumber: trip.loadNumber,
       freightBrokerName: trip.freightBrokerName,
       stops: trip.stops,
@@ -192,10 +196,10 @@ export default function SearchTrip() {
                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                 onClick={() => openAssign(trip)}
               >
-                {/* Trip ID = short UUID */}
+                {/* Trip ID = order_number */}
                 <div>
                   <span style={{ fontSize: '14px', fontWeight: '700', color: '#3b82f6' }}>
-                    #{String(trip.id).slice(-5)}
+                    {trip.tripId}
                   </span>
                 </div>
                 {/* Freight Broker */}
@@ -204,7 +208,7 @@ export default function SearchTrip() {
                     {trip.freightBrokerName}
                   </span>
                 </div>
-                {/* Load # = order_number */}
+                {/* Load # = load_number */}
                 <div>
                   <span style={{ fontSize: '13px', fontWeight: '600', color: '#f59e0b' }}>
                     {trip.loadNumber}
@@ -220,7 +224,7 @@ export default function SearchTrip() {
             {/* Header */}
             <div style={{ display: 'grid', gridTemplateColumns: '0.8fr 1.5fr 1.5fr 1fr',
               padding: '12px 16px', background: '#f8f8f8', borderBottom: '1px solid #e8e8e8' }}>
-              {['LOAD #', 'WAREHOUSE ID 1', 'WAREHOUSE ID 2', 'STATUS'].map(h => (
+              {['TRIP ID', 'LOCATION NAME (PICKUP)', 'RECEIVER (DELIVERY)', 'STATUS'].map(h => (
                 <span key={h} style={{ fontSize: '12px', fontWeight: '700', color: '#888',
                   textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</span>
               ))}
@@ -237,9 +241,9 @@ export default function SearchTrip() {
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                   onClick={() => openAssign(trip)}
                 >
-                  {/* Load # */}
+                  {/* Trip ID */}
                   <div>
-                    <span style={{ fontSize: '13px', fontWeight: '700', color: '#1a1a1a' }}>{trip.loadNumber}</span>
+                    <span style={{ fontSize: '13px', fontWeight: '700', color: '#1a1a1a' }}>{trip.tripId}</span>
                   </div>
                   {/* Warehouse ID 1 = Pickup location */}
                   <div>
