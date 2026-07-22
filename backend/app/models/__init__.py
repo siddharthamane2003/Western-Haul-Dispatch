@@ -493,6 +493,18 @@ class OrderLocation(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
+    # Extra warehouse / stop fields
+    commodity: Mapped[Optional[str]] = mapped_column(String(255))
+    weight: Mapped[Optional[float]] = mapped_column(Numeric(10, 2))
+    qty: Mapped[Optional[int]] = mapped_column(Integer)
+    start_date: Mapped[Optional[str]] = mapped_column(String(20))
+    start_time: Mapped[Optional[str]] = mapped_column(String(10))
+    end_date: Mapped[Optional[str]] = mapped_column(String(20))
+    end_time: Mapped[Optional[str]] = mapped_column(String(10))
+    appt: Mapped[Optional[bool]] = mapped_column(Boolean)
+    appt_date: Mapped[Optional[str]] = mapped_column(String(20))
+    appt_time: Mapped[Optional[str]] = mapped_column(String(10))
+
     order: Mapped["FreightOrder"] = relationship("FreightOrder", back_populates="order_locations")
 
 

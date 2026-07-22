@@ -68,8 +68,15 @@ async def list_orders(
         sort_order=sort_order,
     )
 
+    # Reload each order with relations so customer + order_locations are present
+    orders_with_relations = []
+    for item in items:
+        full = await repo.get_with_relations(item.id)
+        if full:
+            orders_with_relations.append(full)
+
     return PaginatedResponse(
-        items=[FreightOrderResponse.model_validate(i) for i in items],
+        items=[FreightOrderResponse.model_validate(i) for i in orders_with_relations],
         total=total, page=page, size=size, pages=(total + size - 1) // size,
     )
 
@@ -111,6 +118,57 @@ async def cancel_order(
     service = FreightOrderService(db)
     order = await service.cancel_order(order_id, reason, current_user.id)
     return {"message": "Order cancelled", "order_number": order.order_number}
+
+
+@order_router.post("/{order_id}/locations", response_model=FreightOrderResponse)
+async def add_order_locations(
+    order_id: UUID,
+    locations: list[OrderLocationCreate],
+    replace: bool = Query(False, description="If true, delete existing locations first"),
+    current_user: User = Depends(get_dispatcher_or_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Add (or replace) locations for an existing freight order."""
+    from app.models import OrderLocation
+    from sqlalchemy import delete as sa_delete
+
+    repo = FreightOrderRepository(db)
+    order = await repo.get(order_id)
+    if not order or order.company_id != current_user.company_id:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    if replace:
+        # Delete all existing locations for this order
+        await db.execute(sa_delete(OrderLocation).where(OrderLocation.order_id == order_id))
+
+    for loc in locations:
+        loc_data = loc.model_dump()
+        loc_data["order_id"] = order_id
+        db.add(OrderLocation(**loc_data))
+
+    await db.flush()
+    return await repo.get_with_relations(order_id)
+
+
+@order_router.get("/{order_id}/locations")
+async def list_order_locations(
+    order_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get all locations for a freight order."""
+    from sqlalchemy import select
+    from app.models import OrderLocation
+
+    result = await db.execute(
+        select(OrderLocation)
+        .where(OrderLocation.order_id == order_id)
+        .order_by(OrderLocation.sequence)
+    )
+    locs = result.scalars().all()
+    from app.schemas.dispatch import OrderLocationResponse
+    return [OrderLocationResponse.model_validate(l) for l in locs]
+
 
 
 @order_router.delete("/{order_id}")
