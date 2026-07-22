@@ -241,7 +241,17 @@ class FreightOrderRepository(BaseRepository[FreightOrder]):
         order_col = getattr(FreightOrder, sort_by, FreightOrder.created_at)
         order_dir = desc(order_col) if sort_order == "desc" else asc(order_col)
 
-        items = await self.get_all(skip=skip, limit=limit, filters=filters, order_by=order_dir)
+        query = select(FreightOrder).options(
+            selectinload(FreightOrder.order_locations),
+            selectinload(FreightOrder.customer)
+        )
+        for f in filters:
+            query = query.where(f)
+        query = query.order_by(order_dir).offset(skip).limit(limit)
+
+        result = await self.db.execute(query)
+        items = result.scalars().all()
+
         return items, count
 
     async def get_revenue_by_month(self, company_id: UUID, year: int) -> List[dict]:
