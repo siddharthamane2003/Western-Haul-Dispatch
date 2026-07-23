@@ -92,6 +92,7 @@ export default function SearchTrip() {
 
         return {
           id: item.id,
+          // Swap: Trip ID should be order_number, Load Number should be load_number
           tripId: item.order_number || '',
           loadNumber: item.load_number || '',
           freightBrokerName: freightBroker,

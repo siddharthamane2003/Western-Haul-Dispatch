@@ -12,7 +12,7 @@ from app.repositories.repositories import FreightOrderRepository, DispatchReposi
 from app.schemas.dispatch import (
     FreightOrderCreate, FreightOrderUpdate, FreightOrderResponse,
     DispatchCreate, DispatchUpdate, DispatchResponse, PaginatedResponse,
-    TrackingUpdateCreate
+    TrackingUpdateCreate, OrderLocationCreate
 )
 
 order_router = APIRouter(prefix="/orders", tags=["Freight Orders"])

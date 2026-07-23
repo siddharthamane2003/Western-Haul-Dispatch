@@ -389,12 +389,27 @@ export default function AddTrip() {
         apiGet<any>('/orders/').then(data => {
           const mapped = (data.items || []).map((item: any) => ({
             id: item.id,
-            loadNumber: item.order_number || '',
-            freightBrokerName: item.customer?.company_name || item.customer?.name || item.customer_name || '—',
+            loadNumber: item.load_number || '',
+            freightBrokerName: (() => {
+              let broker = '—';
+              const notes = item.internal_notes || '';
+              if (notes.startsWith('{')) {
+                try {
+                  const parsed = JSON.parse(notes);
+                  broker = parsed.freightBrokerName || parsed.freight_broker || '—';
+                } catch {}
+              } else if (notes) {
+                broker = notes;
+              }
+              if (broker === '—') {
+                broker = item.customer?.company_name || item.customer_name || '—';
+              }
+              return broker;
+            })(),
             locationName: item.locations?.find((l: any) => l.location_type === 'pickup' || l.pdy === 'Pickup')?.name
-                       || item.locations?.[0]?.name || item.locations?.[0]?.locationName || '—',
+                         || item.locations?.[0]?.name || item.locations?.[0]?.locationName || '—',
             receiver: item.locations?.slice().reverse().find((l: any) => l.location_type === 'delivery' || l.pdy === 'Delivery')?.name
-                   || item.locations?.[item.locations.length - 1]?.name || item.locations?.[item.locations.length - 1]?.locationName || '—',
+                     || item.locations?.[item.locations.length - 1]?.name || item.locations?.[item.locations.length - 1]?.locationName || '—',
             ps: item.payment_mode || 'CAD',
             status: item.status || 'pending',
             amount: item.total_amount?.toString() || '0',
