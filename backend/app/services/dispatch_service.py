@@ -38,6 +38,8 @@ class FreightOrderService:
         # Debug: print incoming order data
         print("[DEBUG] FreightOrderCreate payload:", order_in.model_dump())
 
+        order_number = await self.order_repo.get_next_number(company_id)
+
         # Calculate totals
         tax_rate = 0.18  # 18% GST
         subtotal = order_in.freight_amount + order_in.additional_charges - order_in.discount
@@ -54,8 +56,18 @@ class FreightOrderService:
             "status": order_in.status if order_in.status else "pending",
         })
 
-        # Debug: print created order object
-        print("[DEBUG] Created FreightOrder:", order)
+        order = await self.order_repo.create(order_data)
+
+        # #region agent log
+        try:
+            import json, time
+            from pathlib import Path
+            _log = Path(__file__).resolve().parents[3] / "debug-a44aee.log"
+            with _log.open("a", encoding="utf-8") as _f:
+                _f.write(json.dumps({"sessionId": "a44aee", "location": "dispatch_service.py:create_order", "message": "order created", "data": {"order_id": str(order.id), "order_number": order_number, "load_number": order_in.load_number}, "timestamp": int(time.time() * 1000), "hypothesisId": "A"}) + "\n")
+        except Exception:
+            pass
+        # #endregion
 
         # Create locations
         from app.models import OrderLocation

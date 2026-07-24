@@ -66,6 +66,19 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
+    const method = (config.method || 'get').toUpperCase()
+    if (method === 'POST' || method === 'PUT' || method === 'PATCH') {
+      const url = `${config.baseURL || ''}${config.url || ''}`
+      // #region agent log
+      fetch('http://127.0.0.1:7683/ingest/9880e8b7-d01d-4c70-b168-7c4233b2b147',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a44aee'},body:JSON.stringify({sessionId:'a44aee',location:'api.ts:request',message:'API REQUEST',data:{url,method,payload:config.data,headers:config.headers},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      console.log('========== API REQUEST ==========')
+      console.log('URL:', url)
+      console.log('Method:', method)
+      console.log('Payload:', config.data)
+      console.log('Headers:', config.headers)
+      console.log('===============================')
+    }
     return config
   },
   error => Promise.reject(error)
@@ -73,7 +86,20 @@ api.interceptors.request.use(
 
 // Response interceptor — handle errors + token refresh
 api.interceptors.response.use(
-  response => response,
+  response => {
+    const method = (response.config.method || 'get').toUpperCase()
+    if (method === 'POST' || method === 'PUT' || method === 'PATCH') {
+      const url = `${response.config.baseURL || ''}${response.config.url || ''}`
+      // #region agent log
+      fetch('http://127.0.0.1:7683/ingest/9880e8b7-d01d-4c70-b168-7c4233b2b147',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a44aee'},body:JSON.stringify({sessionId:'a44aee',location:'api.ts:response',message:'API RESPONSE OK',data:{url,method,status:response.status,data:response.data},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      console.log('========== API RESPONSE ==========')
+      console.log('Status:', response.status)
+      console.log(response.data)
+      console.log('=================================')
+    }
+    return response
+  },
   async error => {
     const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean }
 
@@ -142,6 +168,23 @@ api.interceptors.response.use(
     } else if (status !== 401) {
       if (message && typeof message === 'string') {
         toast.error(message)
+      }
+    }
+
+    const cfg = error.config as InternalAxiosRequestConfig | undefined
+    if (cfg) {
+      const method = (cfg.method || 'get').toUpperCase()
+      if (method === 'POST' || method === 'PUT' || method === 'PATCH') {
+        const url = `${cfg.baseURL || ''}${cfg.url || ''}`
+        // #region agent log
+        fetch('http://127.0.0.1:7683/ingest/9880e8b7-d01d-4c70-b168-7c4233b2b147',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a44aee'},body:JSON.stringify({sessionId:'a44aee',location:'api.ts:responseError',message:'API RESPONSE ERROR',data:{url,method,status:error.response?.status,detail:error.response?.data,message:error.message},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
+        console.error('========== API ERROR ==========')
+        console.error('URL:', url)
+        console.error('Status:', error.response?.status)
+        console.error('Response:', error.response?.data)
+        console.error('Error:', error.message)
+        console.error('=================================')
       }
     }
 

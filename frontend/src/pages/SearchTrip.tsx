@@ -1,59 +1,21 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiGet } from '@/lib/api'
+import { mapOrderToTripDisplay } from '@/lib/tripMapping'
 import { AssignDispatchModal } from './AddTrip'
-
-interface StopItem {
-  id: string
-  locationName: string
-  address: string
-  pdy: string        // 'Pickup' | 'Delivery' | 'extra' | etc.
-  commodity: string
-  weight: string
-  qty: string
-  startDate: string
-  startTime: string
-  endDate: string
-  endTime: string
-  appt: string
-  apptDate: string
-  apptTime: string
-  notes: string
-}
 
 interface TripRow {
   id: string
-  tripId: string              // order_number (e.g. WH-000001)
-  loadNumber: string          // load_number (entered by user)
-  freightBrokerName: string   // from internal_notes or customer
+  tripId: string
+  loadNumber: string
+  freightBrokerName: string
   amount: string
   paymentType: string
   status: string
-  stops: StopItem[]
-  warehouseId1: string        // 1st Pickup stop name
-  warehouseId2: string        // 1st Delivery stop name
-}
-
-function mapLocations(locations: any[]): StopItem[] {
-  return (locations || []).map((l: any) => ({
-    id: l.id?.toString() || '',
-    locationName: l.name || l.locationName || '',
-    address: l.address || '',
-    pdy: l.location_type
-      ? (l.location_type.charAt(0).toUpperCase() + l.location_type.slice(1))
-      : (l.pdy || 'Pickup'),
-    commodity: l.commodity || '',
-    weight: l.weight?.toString() || '',
-    qty: l.qty?.toString() || '',
-    startDate: l.start_date || l.startDate || '',
-    startTime: l.start_time || l.startTime || '',
-    endDate: l.end_date || l.endDate || '',
-    endTime: l.end_time || l.endTime || '',
-    appt: l.appt ? 'Yes' : 'No',
-    apptDate: l.appt_date || l.apptDate || '',
-    apptTime: l.appt_time || l.apptTime || '',
-    notes: l.notes || '',
-  }))
+  stops: ReturnType<typeof mapOrderToTripDisplay>['stops']
+  pickupLocationName: string
+  deliveryLocationName: string
+  deliveryReceiver: string
 }
 
 export default function SearchTrip() {
@@ -69,41 +31,24 @@ export default function SearchTrip() {
     apiGet<any>('/orders/').then(data => {
       const items = data.items || []
       const mapped: TripRow[] = items.map((item: any) => {
-        const locs = mapLocations(item.locations || [])
-        // Pickup = first location with type pickup / first stop
-        const pickup = locs.find(s => s.pdy === 'Pickup' || s.pdy === 'pickup' || s.pdy === 'Cross Dock') || locs[0]
-        // Delivery = last location with type delivery / last stop
-        const delivery = [...locs].reverse().find(s => s.pdy === 'Delivery' || s.pdy === 'delivery' || s.pdy === 'Drop') || locs[locs.length - 1]
-
-        // Freight broker stored in internal_notes as JSON or plain text
-        let freightBroker = '—'
-        const notes = item.internal_notes || ''
-        if (notes.startsWith('{')) {
-          try {
-            const parsed = JSON.parse(notes)
-            freightBroker = parsed.freightBrokerName || parsed.freight_broker || '—'
-          } catch {}
-        } else if (notes) {
-          freightBroker = notes
-        }
-        if (freightBroker === '—') {
-          freightBroker = item.customer?.company_name || item.customer_name || '—'
-        }
-
+        const row = mapOrderToTripDisplay(item)
         return {
-          id: item.id,
-          // Swap: Trip ID should be order_number, Load Number should be load_number
-          tripId: item.order_number || '',
-          loadNumber: item.load_number || '',
-          freightBrokerName: freightBroker,
-          amount: item.freight_amount?.toString() || item.total_amount?.toString() || '0',
-          paymentType: item.payment_mode || 'CAD',
-          status: item.status || 'pending',
-          stops: locs,
-          warehouseId1: pickup?.locationName || '—',
-          warehouseId2: delivery?.locationName || '—',
+          id: row.id,
+          tripId: row.tripId,
+          loadNumber: row.loadNumber,
+          freightBrokerName: row.freightBrokerName,
+          amount: row.amount,
+          paymentType: row.paymentType,
+          status: row.status,
+          stops: row.stops,
+          pickupLocationName: row.pickupLocationName,
+          deliveryLocationName: row.deliveryLocationName,
+          deliveryReceiver: row.deliveryReceiver,
         }
       })
+      // #region agent log
+      fetch('http://127.0.0.1:7683/ingest/9880e8b7-d01d-4c70-b168-7c4233b2b147',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a44aee'},body:JSON.stringify({sessionId:'a44aee',location:'SearchTrip.tsx:fetch',message:'trips mapped',data:{count:mapped.length,sample:mapped[0]},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       setTrips(mapped)
     }).catch(() => setTrips([]))
     .finally(() => setLoading(false))
@@ -114,8 +59,8 @@ export default function SearchTrip() {
     t.loadNumber.toLowerCase().includes(search.toLowerCase()) ||
     t.freightBrokerName.toLowerCase().includes(search.toLowerCase()) ||
     t.status.toLowerCase().includes(search.toLowerCase()) ||
-    t.warehouseId1.toLowerCase().includes(search.toLowerCase()) ||
-    t.warehouseId2.toLowerCase().includes(search.toLowerCase())
+    t.pickupLocationName.toLowerCase().includes(search.toLowerCase()) ||
+    t.deliveryReceiver.toLowerCase().includes(search.toLowerCase())
   )
 
   const statusColors: Record<string, string> = {
@@ -197,7 +142,7 @@ export default function SearchTrip() {
                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                 onClick={() => openAssign(trip)}
               >
-                {/* Trip ID = order_number */}
+                {/* Trip ID = order_number (e.g. WH-000001) */}
                 <div>
                   <span style={{ fontSize: '14px', fontWeight: '700', color: '#3b82f6' }}>
                     {trip.tripId}
@@ -209,7 +154,7 @@ export default function SearchTrip() {
                     {trip.freightBrokerName}
                   </span>
                 </div>
-                {/* Load # = load_number */}
+                {/* Load = user load_number (e.g. LD-001) */}
                 <div>
                   <span style={{ fontSize: '13px', fontWeight: '600', color: '#f59e0b' }}>
                     {trip.loadNumber}
@@ -248,11 +193,11 @@ export default function SearchTrip() {
                   </div>
                   {/* Warehouse ID 1 = Pickup location */}
                   <div>
-                    <span style={{ fontSize: '13px', color: '#333', fontWeight: '600' }}>{trip.warehouseId1}</span>
+                    <span style={{ fontSize: '13px', color: '#333', fontWeight: '600' }}>{trip.pickupLocationName}</span>
                   </div>
-                  {/* Warehouse ID 2 = Delivery location */}
+                  {/* Delivery warehouse receiver */}
                   <div>
-                    <span style={{ fontSize: '13px', color: '#333', fontWeight: '600' }}>{trip.warehouseId2}</span>
+                    <span style={{ fontSize: '13px', color: '#333', fontWeight: '600' }}>{trip.deliveryReceiver}</span>
                   </div>
                   {/* Status */}
                   <div>
@@ -283,7 +228,7 @@ export default function SearchTrip() {
                     Load #{trip.loadNumber} — {trip.freightBrokerName}
                   </p>
                   <p style={{ margin: 0, fontSize: '12px', color: '#888' }}>
-                    {trip.warehouseId1} → {trip.warehouseId2}
+                    {trip.pickupLocationName} → {trip.deliveryLocationName}
                   </p>
                 </div>
                 <span style={{ fontSize: '12px', fontWeight: '700', color: '#7c3aed',

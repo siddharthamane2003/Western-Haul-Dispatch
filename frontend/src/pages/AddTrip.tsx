@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { mapOrderToTripDisplay, getStopsByPosition } from '@/lib/tripMapping'
 import { FREIGHT_BROKERS, PAYMENT_TYPES, DRIVERS, TRUCKS, TRAILERS, TRIP_STATUSES, STATUS_MAP } from '@/lib/data'
 import type { TripStop } from '@/lib/data'
 import toast from 'react-hot-toast'
@@ -144,30 +145,37 @@ export function AssignDispatchModal({ trip, onClose }: { trip: any; onClose: () 
   const [trailer, setTrailer] = useState('')
   const [customTrailer, setCustomTrailer] = useState('')
 
-  // Prefill locations based on trip stops
-  const stopsList: any[] = trip?.stops || []
+  // Prefill from Add Location sequence: 1st = Start, 2nd = End, 3+ = Extra
+  const stopsList: any[] = [...(trip?.stops || [])].sort(
+    (a, b) => (a.sequence ?? 0) - (b.sequence ?? 0),
+  )
 
-  // Warehouse ID 1 = first Pickup stop
-  const pickupStop = stopsList.find((s: any) =>
-    s.pdy === 'Pickup' || s.pdy === 'pickup' ||
-    s.location_type === 'pickup' || s.pdy === 'Cross Dock'
-  ) || stopsList[0]
+  const pos = getStopsByPosition(
+    stopsList.map((s: any, idx: number) => ({
+      id: s.id || String(idx),
+      sequence: s.sequence ?? idx + 1,
+      locationName: s.locationName || s.name || '',
+      address: s.address || '',
+      pdy: s.pdy || s.location_type || 'Pickup',
+      receiver: s.receiver || '—',
+      commodity: s.commodity || '',
+      weight: s.weight || '',
+      qty: s.qty || '',
+      startDate: s.startDate || '',
+      startTime: s.startTime || '',
+      endDate: s.endDate || '',
+      endTime: s.endTime || '',
+      appt: s.appt || 'No',
+      apptDate: s.apptDate || '',
+      apptTime: s.apptTime || '',
+      notes: s.notes || '',
+    })),
+  )
 
-  // Warehouse ID 2 = first Delivery stop
-  const deliveryStop = stopsList.find((s: any) =>
-    s.pdy === 'Delivery' || s.pdy === 'delivery' ||
-    s.location_type === 'delivery' || s.pdy === 'Drop'
-  ) || stopsList[stopsList.length - 1]
-
-  // Extra stops = everything that is neither pickup nor delivery
-  const middleStops = stopsList.filter((s: any) => s !== pickupStop && s !== deliveryStop)
-
-  const initialStart = pickupStop?.locationName || pickupStop?.name || ''
-  const initialEnd = deliveryStop?.locationName || deliveryStop?.name || ''
-  const hasExtra = middleStops.length > 0
-  const extraStopsText = hasExtra
-    ? middleStops.map((s: any) => s.locationName || s.name || '').filter(Boolean).join(', ')
-    : 'None'
+  const initialStart = pos.startStopName
+  const initialEnd = pos.endStopName
+  const extraStopsText = pos.extraStopsLabel
+  const hasExtra = extraStopsText !== 'None'
 
   const [startStop, setStartStop] = useState(initialStart)
   const [endStop, setEndStop] = useState(initialEnd)
@@ -202,7 +210,7 @@ export function AssignDispatchModal({ trip, onClose }: { trip: any; onClose: () 
     const finalTrailer = getActiveTrailer()
 
     const startTime = stopsList[0]?.startTime || stopsList[0]?.apptTime || 'N/A'
-    const endTime = stopsList[stopsList.length - 1]?.endTime || stopsList[stopsList.length - 1]?.apptTime || 'N/A'
+    const endTime = stopsList[1]?.endTime || stopsList[1]?.apptTime || 'N/A'
     const notesContent = trip?.comment || trip?.notes || 'None.'
 
     return [
@@ -251,7 +259,7 @@ export function AssignDispatchModal({ trip, onClose }: { trip: any; onClose: () 
 
             {trip && (
               <p style={{ margin: '0 0 18px', fontSize: '13px', color: '#6b7280', background: '#f9fafb', padding: '10px 14px', borderRadius: '8px' }}>
-                Load #{trip.loadNumber} · {trip.freightBrokerName}
+                Trip {trip.tripId} · Load {trip.loadNumber} · {trip.freightBrokerName}
               </p>
             )}
 
@@ -387,54 +395,25 @@ export default function AddTrip() {
     if (viewTrip) {
       const fetchTrips = () => {
         apiGet<any>('/orders/').then(data => {
-          const mapped = (data.items || []).map((item: any) => ({
-            id: item.id,
-            loadNumber: item.load_number || '',
-            freightBrokerName: (() => {
-              let broker = '—';
-              const notes = item.internal_notes || '';
-              if (notes.startsWith('{')) {
-                try {
-                  const parsed = JSON.parse(notes);
-                  broker = parsed.freightBrokerName || parsed.freight_broker || '—';
-                } catch {}
-              } else if (notes) {
-                broker = notes;
-              }
-              if (broker === '—') {
-                broker = item.customer?.company_name || item.customer_name || '—';
-              }
-              return broker;
-            })(),
-            locationName: item.locations?.find((l: any) => l.location_type === 'pickup' || l.pdy === 'Pickup')?.name
-                         || item.locations?.[0]?.name || item.locations?.[0]?.locationName || '—',
-            receiver: item.locations?.slice().reverse().find((l: any) => l.location_type === 'delivery' || l.pdy === 'Delivery')?.name
-                     || item.locations?.[item.locations.length - 1]?.name || item.locations?.[item.locations.length - 1]?.locationName || '—',
-            ps: item.payment_mode || 'CAD',
-            status: item.status || 'pending',
-            amount: item.total_amount?.toString() || '0',
-            stops: (item.locations || []).map((l: any) => ({
-              id: l.id?.toString() || Date.now().toString(),
-              locationId: l.location_id,
-              locationName: l.name || l.locationName,
-              address: l.address,
-              pdy: l.location_type ? (l.location_type.charAt(0).toUpperCase() + l.location_type.slice(1)) : (l.pdy || 'Pickup'),
-              commodity: l.commodity || '',
-              weight: l.weight?.toString() || '',
-              qty: l.qty?.toString() || '',
-              startDate: l.start_date || l.startDate || '',
-              startTime: l.start_time || l.startTime || '',
-              endDate: l.end_date || l.endDate || '',
-              endTime: l.end_time || l.endTime || '',
-              appt: l.appt ? 'Yes' : 'No',
-              apptDate: l.appt_date || l.apptDate || '',
-              apptTime: l.appt_time || l.apptTime || '',
-              notes: l.notes || ''
-            })),
-            comment: item.internal_notes || '',
-          }))
+          const mapped = (data.items || []).map((item: any) => {
+            const row = mapOrderToTripDisplay(item)
+            return {
+              id: row.id,
+              tripId: row.tripId,
+              loadNumber: row.loadNumber,
+              freightBrokerName: row.freightBrokerName,
+              locationName: row.pickupLocationName,
+              receiver: row.deliveryReceiver,
+              ps: row.paymentType,
+              status: row.status,
+              amount: row.amount,
+              stops: row.stops,
+              comment: row.comment,
+            }
+          })
           setBrowseTrips(mapped)
-        }).catch(() => {
+        }).catch((err) => {
+          console.error('Browse trips fetch failed', err)
           if (passedTrip) setBrowseTrips([passedTrip])
         })
       }
@@ -470,11 +449,9 @@ export default function AddTrip() {
         try {
           const newCustomer = await apiPost<any>('/customers/', {
             company_name: freightBrokerName,
-            contact_name: freightBrokerEmployee || 'Unknown',
+            contact_person: freightBrokerEmployee || 'Unknown',
             email: `broker-${Date.now()}@example.com`,
             phone: '000-000-0000',
-            customer_type: 'BROKER',
-            status: 'ACTIVE'
           })
           finalCustomerId = newCustomer.id
         } catch (e) {
@@ -497,21 +474,31 @@ export default function AddTrip() {
           })
           savedTripId = saved.id
           toast.success('Trip saved! Now add locations.')
-        } catch {
-          toast.success('Trip saved locally! Now add locations.')
+          navigate('/app/trip/location', {
+            state: {
+              tripId: savedTripId,
+              orderNumber: saved.order_number,
+              freightBrokerName,
+              freightBrokerEmployee,
+              loadNumber,
+              amount,
+              paymentType,
+              comment,
+            },
+          })
+          return
+        } catch (err) {
+          console.error('Create order failed', err)
+          toast.error('Failed to save trip on server. Check console for details.')
+          return
         }
       } else {
-        toast.success('Trip saved! Now add locations.')
+        toast.error('Could not resolve customer for this trip.')
+        return
       }
-
-      navigate('/app/trip/location', {
-        state: { tripId: savedTripId, freightBrokerName, freightBrokerEmployee, loadNumber, amount, paymentType, comment }
-      })
-    } catch {
-      toast.success('Navigating to Location page...')
-      navigate('/app/trip/location', {
-        state: { tripId: `local-${Date.now()}`, freightBrokerName, freightBrokerEmployee, loadNumber, amount, paymentType, comment }
-      })
+    } catch (err) {
+      console.error('Save trip flow failed', err)
+      toast.error('Could not save trip. Please try again.')
     }
   }
 
@@ -540,7 +527,7 @@ export default function AddTrip() {
                 ) : (
                   browseTrips.map(trip => (
                     <tr key={trip.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                      <td style={{ padding: '10px 12px', fontWeight: '700', color: '#111827' }}>#{String(trip.id).slice(-5)}</td>
+                      <td style={{ padding: '10px 12px', fontWeight: '700', color: '#111827' }}>{trip.tripId}</td>
                       <td style={{ padding: '10px 12px', color: '#374151' }}>{trip.freightBrokerName}</td>
                       <td style={{ padding: '10px 12px', color: '#374151' }}>{trip.loadNumber}</td>
                       <td style={{ padding: '10px 12px', fontWeight: '600', color: '#111827' }}>{trip.amount} {trip.ps}</td>

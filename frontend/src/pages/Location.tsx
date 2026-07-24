@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { LOCATIONS, PDY_TYPES, type TripStop } from '@/lib/data'
+import { mapApiLocationsToStops, getStopsByPosition } from '@/lib/tripMapping'
 import { apiGet, apiPost } from '@/lib/api'
 import toast from 'react-hot-toast'
 
@@ -102,6 +103,7 @@ export default function LocationPage() {
   const [apptDate, setAppDate] = useState('')
   const [apptTime, setAppTime] = useState('')
   const [notes, setNotes] = useState('')
+  const [receiver, setReceiver] = useState('')
 
   const [showLocationPicker, setShowLocationPicker] = useState(false)
   const [editingStopId, setEditingStopId] = useState<string | null>(null)
@@ -113,27 +115,18 @@ export default function LocationPage() {
       setLoading(true)
       apiGet<any>(`/orders/${tripId}/locations`)
         .then(data => {
-          const loadedStops = data.map((l: any) => ({
-            id: l.id?.toString() || Date.now().toString(),
-            locationId: l.location_id,
-            locationName: l.name,
-            address: l.address,
-            pdy: l.location_type.charAt(0).toUpperCase() + l.location_type.slice(1),
-            commodity: l.commodity || '',
-            weight: l.weight?.toString() || '',
-            qty: l.qty?.toString() || '',
-            startDate: l.start_date || '',
-            startTime: l.start_time || '',
-            endDate: l.end_date || '',
-            endTime: l.end_time || '',
-            appt: l.appt || 'No',
-            apptDate: l.appt_date || '',
-            apptTime: l.appt_time || '',
-            notes: l.notes || ''
-          }))
+          const loadedStops = mapApiLocationsToStops(data).map(s => ({
+            ...s,
+            id: s.id || Date.now().toString(),
+            locationId: s.locationId ?? null,
+            appt: (s.appt === 'Yes' ? 'Yes' : 'No') as 'Yes' | 'No',
+          })) as TripStop[]
           setStops(loadedStops)
         })
-        .catch(err => setError('Failed to load stops'))
+        .catch(err => {
+          console.error('Failed to load stops', err)
+          setError('Failed to load stops')
+        })
         .finally(() => setLoading(false))
     }
   }, [tripId])
@@ -143,13 +136,17 @@ export default function LocationPage() {
     setPdy('Pickup'); setCommodity(''); setWeight(''); setQty('')
     setApp('No');
     setStartDate(''); setStartTime(''); setEndDate(''); setEndTime('')
-    setAppDate(''); setAppTime(''); setNotes('')
+    setAppDate(''); setAppTime(''); setNotes(''); setReceiver('')
     setEditingStopId(null)
   }
 
   const handleSaveStop = async () => {
     if (!locationName) { toast.error('Please select a location'); return }
-    const stop: TripStop = {
+    const defaultReceiver =
+      pdy === 'Pickup'
+        ? (tripData.freightBrokerEmployee as string) || receiver
+        : receiver
+    const stop: TripStop & { receiver?: string } = {
       id: editingStopId || Date.now().toString(),
       locationId,
       locationName,
@@ -166,6 +163,7 @@ export default function LocationPage() {
       apptDate,
       apptTime,
       notes,
+      receiver: defaultReceiver || '',
     };
     const newStops = editingStopId
       ? stops.map(s => s.id === editingStopId ? stop : s)
@@ -175,7 +173,10 @@ export default function LocationPage() {
     toast.success('Stop saved!');
     // Persist to backend if we have an order id
     const orderId = routeLocation.state?.tripId;
-    if (orderId) {
+    const isServerOrder =
+      typeof orderId === 'string' &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(orderId)
+    if (isServerOrder) {
       // Transform to backend schema — sequence by index
       const pdyToType = (pdy: string): string => {
         const p = pdy.toLowerCase()
@@ -199,14 +200,17 @@ export default function LocationPage() {
         appt_date: s.apptDate || undefined,
         appt_time: s.apptTime || undefined,
         notes: s.notes || undefined,
+        contact_person: (s as TripStop & { receiver?: string }).receiver || undefined,
       }));
       try {
         await apiPost(`/orders/${orderId}/locations?replace=true`, payload);
         toast.success('Stops synced to server');
       } catch (e) {
-        console.error(e);
-        toast.error('Failed to sync stops');
+        console.error('Failed to sync stops', e)
+        toast.error('Failed to sync stops')
       }
+    } else if (orderId) {
+      toast.error('Trip was not saved on server; locations kept locally only.')
     }
   }
 
@@ -221,8 +225,27 @@ export default function LocationPage() {
     setEndDate(stop.endDate)
     setEndTime(stop.endTime); setAppDate(stop.apptDate); setAppTime(stop.apptTime)
     setNotes(stop.notes)
+    setReceiver((stop as TripStop & { receiver?: string }).receiver || '')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
+
+  const tripSummary = React.useMemo(() => {
+    const sorted = mapApiLocationsToStops(
+      stops.map((s, idx) => ({
+        name: s.locationName,
+        address: s.address,
+        location_type: s.pdy,
+        sequence: idx + 1,
+        contact_person: (s as TripStop & { receiver?: string }).receiver,
+      })),
+    )
+    const pos = getStopsByPosition(sorted)
+    return {
+      tripId: tripData.orderNumber || '—',
+      loadNumber: tripData.loadNumber || '—',
+      ...pos,
+    }
+  }, [stops, tripData.loadNumber, tripData.orderNumber])
 
   return (
     <div style={{
@@ -293,6 +316,17 @@ export default function LocationPage() {
           <select style={inp} value={pdy} onChange={e => setPdy(e.target.value)}>
             {PDY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
+        </div>
+
+        {/* Receiver (warehouse contact) */}
+        <div style={{ marginBottom: '14px' }}>
+          <label style={lbl}>Receiver</label>
+          <input
+            style={inp}
+            placeholder={pdy === 'Pickup' ? 'Pickup receiver (defaults to broker employee)' : 'Delivery receiver'}
+            value={receiver}
+            onChange={e => setReceiver(e.target.value)}
+          />
         </div>
 
         {/* Commodity */}
@@ -401,10 +435,10 @@ export default function LocationPage() {
                 </thead>
                 <tbody>
                   <tr style={{ borderBottom: '1px solid #f3f4f6' }}>
-                    <td style={{ padding: '10px', fontWeight: '600', color: '#111827' }}>{tripId ? `#${String(tripId).slice(-5)}` : '—'}</td>
-                    <td style={{ padding: '10px', color: '#374151' }}>{stops[0]?.locationName || '—'}</td>
-                    <td style={{ padding: '10px', color: '#374151' }}>{stops[stops.length - 1]?.locationName || '—'}</td>
-                    <td style={{ padding: '10px', color: '#374151' }}>{stops.length > 2 ? stops.slice(1, -1).map(s => s.locationName).join(', ') : 'None'}</td>
+                    <td style={{ padding: '10px', fontWeight: '600', color: '#111827' }}>{tripSummary.tripId}</td>
+                    <td style={{ padding: '10px', color: '#374151' }}>{tripSummary.startStopName || '—'}</td>
+                    <td style={{ padding: '10px', color: '#374151' }}>{tripSummary.endStopName || '—'}</td>
+                    <td style={{ padding: '10px', color: '#374151' }}>{tripSummary.extraStopsLabel}</td>
                   </tr>
                 </tbody>
               </table>

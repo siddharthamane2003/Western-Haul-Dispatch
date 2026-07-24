@@ -4,6 +4,7 @@ import { tripStore, DRIVERS, TRUCKS, TRAILERS } from '@/lib/data'
 import type { Trip, TripStop } from '@/lib/data'
 import toast from 'react-hot-toast'
 import { apiGet, apiPost } from '@/lib/api'
+import { mapOrderToTripDisplay } from '@/lib/tripMapping'
 
 const VIHO_LOGO = (
   <div style={{
@@ -170,35 +171,29 @@ export default function DispatchDetail() {
     const fetchTrip = async () => {
       try {
         const data = await apiGet<any>(`/orders/${tripId}`)
-        // Map backend FreightOrderResponse to frontend expected structure
+        const row = mapOrderToTripDisplay(data)
         const mappedTrip = {
-          id: data.id,
-          loadNumber: data.order_number,
-          freightBrokerName: 'Customer', // Would come from customer relation
-          assignedDriverName: data.dispatches?.[0]?.driver?.first_name || 'Unassigned',
+          id: row.id,
+          tripId: row.tripId,
+          loadNumber: row.loadNumber,
+          freightBrokerName: row.freightBrokerName,
+          assignedDriverName: data.dispatches?.[0]?.driver?.full_name || 'Unassigned',
           assignedDriverId: data.dispatches?.[0]?.driver_id || null,
           assignedTruckNumber: data.dispatches?.[0]?.vehicle?.registration_number || '',
           assignedTrailerNumber: '',
-          status: data.status,
-          amount: data.total_amount?.toString(),
-          comment: data.internal_notes || '',
-          paymentType: data.payment_mode || 'Credit',
+          status: row.status,
+          amount: row.amount,
+          comment: row.comment,
+          paymentType: row.paymentType,
           dispatchSummaryGenerated: false,
-          stops: data.locations?.map((loc: any) => ({
-            id: loc.id,
-            locationName: loc.name,
-            address: loc.address,
-            pdy: loc.location_type === 'delivery' ? 'Delivery' : 'Pickup',
-            commodity: data.material_type || '',
-            weight: data.weight_tons?.toString() || '',
-            startDate: data.pickup_date,
-            startTime: data.pickup_time || '',
-            notes: loc.notes || '',
-          })) || []
+          stops: row.stops,
+          pickupLocationName: row.pickupLocationName,
+          deliveryReceiver: row.deliveryReceiver,
         }
         setTrip(mappedTrip)
         setEditForm(mappedTrip)
       } catch (e) {
+        console.error('DispatchDetail fetch failed', e)
       } finally {
         setIsLoading(false)
       }
@@ -399,6 +394,7 @@ export default function DispatchDetail() {
             <div>
               {/* Info rows */}
               {[
+                ['Trip ID', trip.tripId],
                 ['Load #', trip.loadNumber],
                 ['Freight Broker', trip.freightBrokerName],
                 ['Employee', trip.freightBrokerEmployee || '—'],

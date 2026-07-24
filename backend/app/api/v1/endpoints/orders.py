@@ -1,7 +1,7 @@
 from typing import Optional, Any
+from uuid import UUID
 from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from datetime import date
-from fastapi import Request
 
 
 def log_request(request: Request, body: Any):
@@ -102,6 +102,18 @@ async def list_orders(
         if full:
             orders_with_relations.append(full)
 
+    # #region agent log
+    try:
+        import json, time
+        from pathlib import Path
+        _log = Path(__file__).resolve().parents[3] / "debug-a44aee.log"
+        sample = orders_with_relations[0] if orders_with_relations else None
+        with _log.open("a", encoding="utf-8") as _f:
+            _f.write(json.dumps({"sessionId": "a44aee", "location": "orders.py:list_orders", "message": "orders listed", "data": {"count": len(orders_with_relations), "sample_order_number": getattr(sample, "order_number", None), "sample_load_number": getattr(sample, "load_number", None), "sample_location_count": len(getattr(sample, "order_locations", []) if sample else [])}, "timestamp": int(time.time() * 1000), "hypothesisId": "B"}) + "\n")
+    except Exception:
+        pass
+    # #endregion
+
     return PaginatedResponse(
         items=[FreightOrderResponse.model_validate(i) for i in orders_with_relations],
         total=total, page=page, size=size, pages=(total + size - 1) // size,
@@ -119,7 +131,7 @@ async def get_order(
     order = await repo.get_with_relations(order_id)
     if not order or order.company_id != current_user.company_id:
         raise HTTPException(status_code=404, detail="Order not found")
-    return order
+    return FreightOrderResponse.model_validate(order)
 
 
 @order_router.put("/{order_id}", response_model=FreightOrderResponse)
@@ -161,8 +173,10 @@ async def add_order_locations(
 
     repo = FreightOrderRepository(db)
     order = await repo.get(order_id)
-    if not order or order.company_id != current_user.company_id:
-        raise HTTPException(status_code=404, detail="Order not found")
+    if not order:
+        raise HTTPException(status_code=404, detail=f"Order not found: {order_id}")
+    if order.company_id != current_user.company_id:
+        raise HTTPException(status_code=404, detail="Order not found for this company")
 
     if replace:
         # Delete all existing locations for this order
@@ -181,7 +195,19 @@ async def add_order_locations(
         db.add(OrderLocation(**loc_data))
 
     await db.flush()
-    return await repo.get_with_relations(order_id)
+    full = await repo.get_with_relations(order_id)
+    # #region agent log
+    try:
+        import json, time
+        from pathlib import Path
+        _log = Path(__file__).resolve().parents[3] / "debug-a44aee.log"
+        with _log.open("a", encoding="utf-8") as _f:
+            locs = [{"name": l.name, "type": l.location_type} for l in (full.order_locations if full else [])]
+            _f.write(json.dumps({"sessionId": "a44aee", "location": "orders.py:add_order_locations", "message": "locations persisted", "data": {"order_id": str(order_id), "count": len(locs), "locations": locs}, "timestamp": int(time.time() * 1000), "hypothesisId": "B"}) + "\n")
+    except Exception:
+        pass
+    # #endregion
+    return FreightOrderResponse.model_validate(full)
 
 
 @order_router.get("/{order_id}/locations")

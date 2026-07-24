@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { mapOrderToTripDisplay } from '@/lib/tripMapping'
 import { TRIP_STATUSES } from '@/lib/data'
 import { apiGet } from '@/lib/api'
 import { AssignDispatchModal } from './AddTrip'
@@ -30,22 +31,26 @@ export default function DispatchHistory() {
     const fetchTrips = async () => {
       try {
         const data = await apiGet<any>('/orders/')
-        const mapped = data.items.map((item: any) => ({
-          id: item.id,
-          loadNumber: item.order_number || 'WH-000001',
-          freightBrokerName: item.customer?.company_name || item.customer?.name || item.customer_name || '—',
-          locationName: item.locations?.find((l: any) => l.location_type === 'pickup')?.name
-                     || item.locations?.[0]?.name || '—',
-          receiver: item.locations?.find((l: any) => l.location_type === 'delivery')?.name
-                 || item.locations?.[item.locations.length - 1]?.name || '—',
-          ps: item.payment_mode || 'CAD',
-          status: item.status || 'New',
-          amount: item.total_amount?.toString() || '0.00',
-          stops: item.locations || [],
-          comment: item.internal_notes || '',
-        }))
+        const mapped = (data.items || []).map((item: any) => {
+          const row = mapOrderToTripDisplay(item)
+          return {
+            id: row.id,
+            tripId: row.tripId,
+            loadNumber: row.loadNumber,
+            freightBrokerName: row.freightBrokerName,
+            locationName: row.pickupLocationName,
+            receiver: row.deliveryReceiver,
+            ps: row.paymentType,
+            status: row.status,
+            amount: row.amount,
+            stops: row.stops,
+            comment: row.comment,
+          }
+        })
         setAllTrips(mapped)
-      } catch { /* api interceptor handles */ }
+      } catch (err) {
+        console.error('DispatchHistory fetch failed', err)
+      }
     }
     fetchTrips()
   }, [])
@@ -53,6 +58,7 @@ export default function DispatchHistory() {
   const filteredTrips = useMemo(() => {
     return allTrips.filter(t => {
       const matchSearch =
+        t.tripId?.toLowerCase().includes(search.toLowerCase()) ||
         t.loadNumber.toLowerCase().includes(search.toLowerCase()) ||
         t.freightBrokerName.toLowerCase().includes(search.toLowerCase()) ||
         t.locationName.toLowerCase().includes(search.toLowerCase()) ||
@@ -138,7 +144,7 @@ export default function DispatchHistory() {
                     style={{ borderBottom: '1px solid #f5f5f5', transition: 'background 0.15s' }}
                     onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                    <td style={{ padding: '14px 16px', fontSize: '13px', fontWeight: '700', color: '#1a1a1a' }}>#{String(trip.id).slice(-5)}</td>
+                    <td style={{ padding: '14px 16px', fontSize: '13px', fontWeight: '700', color: '#1a1a1a' }}>{trip.tripId}</td>
                     <td style={{ padding: '14px 16px', fontSize: '13px', color: '#1a2744', fontWeight: '600' }}>{trip.freightBrokerName}</td>
                     <td style={{ padding: '14px 16px', fontSize: '13px', color: '#444' }}>{trip.loadNumber}</td>
                     <td style={{ padding: '14px 16px', fontSize: '13px', fontWeight: '600', color: '#1a1a1a' }}>{trip.amount} {trip.ps}</td>
