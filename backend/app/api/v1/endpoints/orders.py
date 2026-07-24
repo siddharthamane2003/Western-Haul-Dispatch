@@ -1,7 +1,22 @@
-from typing import Optional
-from uuid import UUID
+from typing import Optional, Any
+from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from datetime import date
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import Request
+
+
+def log_request(request: Request, body: Any):
+    try:
+        method = request.method
+        url = str(request.url)
+        headers = {k: v for k, v in request.headers.items() if k.lower() != "authorization"}
+        print("--- Incoming Request ---")
+        print(f"Method: {method}")
+        print(f"URL: {url}")
+        print(f"Headers: {headers}")
+        print(f"Body: {body}")
+        print("------------------------")
+    except Exception as e:
+        print(f"Failed to log request: {e}")
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
@@ -25,15 +40,27 @@ dispatch_router = APIRouter(prefix="/dispatches", tags=["Dispatches"])
 
 @order_router.post("/", response_model=FreightOrderResponse, status_code=201)
 async def create_order(
+    request: Request,
     order_in: FreightOrderCreate,
     current_user: User = Depends(get_dispatcher_or_admin),
     db: AsyncSession = Depends(get_db),
+
 ):
     """Create a new freight order with locations."""
+    # Log incoming request for debugging
+    try:
+        log_request(request, order_in.model_dump())
+    except Exception as e:
+        print(f"Logging failed: {e}")
+
     service = FreightOrderService(db)
     if not current_user.company_id:
         raise HTTPException(status_code=400, detail="User must belong to a company")
-    return await service.create_order(order_in, current_user.company_id, current_user.id)
+    try:
+        return await service.create_order(order_in, current_user.company_id, current_user.id)
+    except Exception as exc:
+        print(f"Error in create_order endpoint: {exc}")
+        raise
 
 
 @order_router.get("/", response_model=PaginatedResponse)
@@ -140,6 +167,13 @@ async def add_order_locations(
     if replace:
         # Delete all existing locations for this order
         await db.execute(sa_delete(OrderLocation).where(OrderLocation.order_id == order_id))
+        # Debug: print incoming order data
+        print("[DEBUG] Incoming FreightOrderCreate:", locations)
+        # After creation, print the persisted order
+        print("[DEBUG] Created FreightOrder:", order)
+        # Also print the DB response after locations added
+        print("[DEBUG] Order with relations:", await repo.get_with_relations(order_id))
+        # TODO: Remove debug prints after testing
 
     for loc in locations:
         loc_data = loc.model_dump()

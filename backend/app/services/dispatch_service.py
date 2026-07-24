@@ -35,7 +35,8 @@ class FreightOrderService:
         if not customer or not customer.is_active:
             raise HTTPException(status_code=404, detail="Customer not found")
 
-        order_number = await self.order_repo.get_next_number(company_id)
+        # Debug: print incoming order data
+        print("[DEBUG] FreightOrderCreate payload:", order_in.model_dump())
 
         # Calculate totals
         tax_rate = 0.18  # 18% GST
@@ -53,7 +54,8 @@ class FreightOrderService:
             "status": order_in.status if order_in.status else "pending",
         })
 
-        order = await self.order_repo.create(order_data)
+        # Debug: print created order object
+        print("[DEBUG] Created FreightOrder:", order)
 
         # Create locations
         from app.models import OrderLocation
